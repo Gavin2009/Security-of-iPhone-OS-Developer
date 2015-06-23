@@ -1,0 +1,388 @@
+IOS安全开发规范
+
+1.	IOS4架构
+ 
+ 图1 IOS4架构
+ios分为4层，分别是Cocoa Touch、Media、Core Service和Core OS。
+开发iPhone OS应用，需要在MAC OS X运行Xcode开发工具。
+iPhone主要开发语言是Objective-C，是扩充C的面向对象编程语言。
+
+2.	发布流程
+ 
+图 2 App Store业务流程
+iPhone封闭的iOS和iTunes紧密结合以实现软件的安装、升级、备份、媒体同步和程序管理等工作。
+相对于Android等其它系统，iPhone是完全封闭的，不过，这种封闭的系统，对安全是有好处的(见3.2安全机制)。
+3.	安全服务 
+3.1安全架构
+ 
+图 3 IOS安全架构
+
+图3中，内核包含两部分：Mach和BSD。Mach和BSD共同完成了内核的功能，其中：
+
+1）Mach是微内核架构(Micro-Kernel)，负责提供最基本的操作系统服务，如进程调度、IPC、SMP、虚拟内存管理。
+
+2）BSD实现I/O、文件系统、网络等。所以iPhone的文件访问控制是基于BSD的。
+内核之上是CDSA(Common Data Security Architecture)，主要提供认证、加密、数据安全存储等。
+
+ CDSA直译为通用数据安全体现架构，是英特尔设计的一个安全体系架构规范。
+
+ CDSA的具体介绍可见：
+http://developer.apple.com/library/mac/#documentation/Security/Conceptual/Security_Overview/Architecture/Architecture.html#//apple_ref/doc/uid/TP30000976-CH202-TPXREF101 。
+3.2安全机制
+缺省情况下，iPhone具有下面安全机制：
+1）	没有读取通话记录、短信等的API，保护了用户的隐私；
+2）	调用显示用户位置信息的API会弹出提示信息；
+3）	不允许使用API直接发送短信和打电话，都需要用户确认，这样间接减少了恶意订购和恶意话费的风险；
+4）	如果不越狱，也无法进行键盘监控。输入法不提供接口，第三方只能在越狱的手机上开发输入法，也就是说，不越狱很难通过输入法去实现键盘监控；
+
+具体的安全机制有下面这些：
+1）	代码签名
+Apple需要开发人员对自己的Iphone程序使用有效的证书签名，用keychain或cryptography primitive用来保证只运行真实设备上，而不是模拟器上。
+签名是用来标识应用程序的开发者以及保证应用程序在签名之后不被更改和损坏。
+
+2）	设备口令
+通过设备口令进行保护，可以防止手机丢失后信息泄漏。
+
+3）	设备和程序控制
+可以由用户配置哪些信息可以被应用程序访问。比如，用户可以配置是否可以使用Safari浏览器，安装应用软件、使用摄像头以及位置等信息，如果禁用这些信息，使用时就会弹出错误提示。(淘宝的开放平台是否是这样？)
+
+4）	安全存储
+Iphone的安全存储主要包括三部分，首先可以使用IOS 4 CDSA架构中提到的AppleFileDL Module提供对文件的加密，其次就是对设备数据如邮件等的加密。最后一点就是可以通过iTunes备份到PC上的数据进行加密。
+
+5）	远程销毁
+远程数据销毁，可以远程消除终端上的数据，用于手机丢失后进行远程数据的销毁。
+
+6）	本地销毁
+本地数据销毁，比如口令输入错误10次以上就清除全部数据。
+
+7）	安全的网络通信
+支持VPN、SSL/TLS，还支持RSA SecureID(动态口令)以及CRYPTOCard等。
+     
+8）	WPA/WPA2
+Wifi支持WPA/WPA2。
+
+9）	运行时保护
+进程隔离，每个程序都有自己的虚拟地址空间。
+
+10）文件访问控制
+应用程序遵循“沙箱”安全原则，即不能够访问其他应用程序的数据。另外，系统文件、资源以及内核都与用户应用程序相隔离。若应用程序要访问其他程序的数据，则必须通过iPad OS提供的API进行访问。
+    
+ 11) 提供密码学服务
+iPhone支持AES、RC4、3DES等加密算法，同事为提高效率，支持AES和SHA1硬件引擎。
+虽然iPhone本身提供了良好的安全架构和环境，但是，由于越狱的存在，所以，开发同事必须考虑下面的安全风险。
+4.	安全风险
+4.1 未保护敏感数据
+用强加密或Apple的Keychain服务来保护需要本地保存的敏感数据。
+4.2 PIE(Position Independent Executable)
+PIE(Position Independent Executable)是一个漏洞利用缓解的安全功能，通过APP应用利用ASLR,提高app被反汇编、溢出攻击的难度，通过xcode可以启用/禁用应用程序PIE功能。
+demo:
+int main(int argc, const char* argv[])
+{
+NSLog(@"Main: %p\n", main); return 0;
+}
+
+iPhone:~ root# for i in `seq 1 5`; do ./nopie-main;done
+2013-05-01 16:56:17.772 nopie-main[8943:707] Main: 0x2f3d 
+2013-05-01 16:56:17.805 nopie-main[8944:707] Main: 0x2f3d 
+2013-05-01 16:56:17.837 nopie-main[8945:707] Main: 0x2f3d 
+2013-05-01 16:56:17.870 nopie-main[8946:707] Main: 0x2f3d 
+2013-05-01 16:56:17.905 nopie-main[8947:707] Main: 0x2f3d
+重新编译开启PIE的应用程序，我们下面示例看到应用主程序现在加载了动态地址
+iPhone:~ root# for i in `seq 1 5`; do ./pie-main;done 
+2013-05-01 17:10:32.175 pie-main[8949:707] Main: 0x2af39
+2013-05-01 17:10:32.208 pie-main[8950:707] Main: 0x3bf39 
+2013-05-01 17:10:32.241 pie-main[8951:707] Main: 0x3f39 
+2013-05-01 17:10:32.277 pie-main[8952:707] Main: 0x8cf39 
+2013-05-01 17:10:32.310 pie-main[8953:707] Main: 0x30f39
+黑盒测试时，我们通过otool验证PIE是否开启，如：
+iPhone:~ root# otool -hv pie-main nopie-main
+pie-main:
+Mach header
+magic    cputype  cpusubtype 	caps  filetype   ncmds sizeofcmds	  flags
+MH_MAGIC   ARM	     9	   0x00  EXECUTE  18	   1948  	NOUNDEFS
+DYLDLINK TWOLEVEL PIE
+nopie-main:							
+Mach header							
+magic    cputype  cpusubtype	caps	filetype   ncmds   sizeofcmds	 flags
+MH_MAGIC   ARM	  9  	  0x00	   EXECUTE     18	     1948  NOUNDEFS
+DYLDLINK TWOLEVEL
+4.3识别堆栈溢出保护
+iOS应用程序可以在编译时使用堆栈溢出保护。这可以通过指定fstack-protector-all来实现，如图所示：
+
+
+4.4自动识别计数引用(ARC)
+自动引用计数（ARC）是自IOS SDK5以后开发编译器引入的移动内存管理，ARC提供了一个安全功能，可以减少开发人员引用内存释放后被重用，导致的Use-After-Free漏洞。$ otool -I -v DummyApp-ARC | grep "_objc_release"
+0x00003fe8	181 _objc_release
+0x00004030	181 _objc_release
+_objc_retainAutoreleaseReturnValue _objc_autoreleaseReturnValue _objc_storeStrong _objc_retain 
+_objc_release 
+_objc_retainAutoreleasedReturnValue 
+在白盒评估IOS应用程序，ARC能通过明确禁用特定的源文件引用fno-objc-arc编译标记。
+5.	审计不安全的API使用
+5.1 http通信安全
+ iOS应用程序通常会使用Web应用程序或基于Web的RPC机制的技术;这样需要一个NSURLRequest对象发起一个HTTPS通信请求。API使用默认设置的SSL密匙进行安全通信；但是API不够完善，使用的不同版本的SDK的SSL之间存的一些差异，下面的总结：
+@implementation insecuressl  
+int main(int argc, const char* argv[])  
+{  
+    NSString *myURL=@"https://localhost/test"; 
+    NSURLRequest *theRequest = [NSURLRequest  requestWithURL:[NSURL 
+URLWithSt ring:myURL]]; 
+    NSURLResponse *resp = nil; 
+    NSError *err = nil;  
+    NSData *response = [NSURLConnection sendSynchronousRequest:  
+theRequest returningResponse: &resp error: &err];  
+    NSString * theString = [[NSString alloc] initWithData:response 
+encodi ng:NSUTF8StringEncoding];  
+    [resp release]; 
+    [err release];  
+    return 0;  
+}
+通过抓包，从各个版本对比差异，发现下面的加密是脆弱的:
+TLS_RSA_WITH_DES_CBC _SHA 
+TLS_RSA_EXPORT_WITH_RC4_MD5 
+TLS_RSA_EXPORT_WITH_DES40_CBC _SHA 
+TLS_DHE_RSA_WITH_DES_CBC _SHA
+TLS_DHE_RSA_EXPORT_WITH_DES40_CBC _SHA
+另外，为了防止中间人攻击，iOS应用禁止使用自签名证书。NSURLRequest类的默认行为是拒绝自签证书，通常情况下开发者重写此行为接受任何证书，经常允许使用自签名证书部署在预生产环境。证书可以验证请求的域使用allowsanyhttpscertificateforhost方法禁用，例子如下：
+mport "loadURL.h"
+@interface NSURLRequest (DummyInterface)
++(BOOL)allowsAnyHTTPSCertificateForHost:(NSString*)host; 
++(void)setAllowsAnyHTTPSCertificate:(BOOL)allow forHost:(NSString*)host; 
+@end
+@implementation loadURL -(void) run
+{
+NSURL *myURL = [NSURL URLWithString:@"https://localhost/test"];
+NSMutableURLRequest *theRequest = [NSMutableURLRequest requestWithURL:myURL cachePolicy:NSURLRequestReloadIgnoringCacheData timeoutInterval:60.0];
+[NSURLRequest setAllowsAnyHTTPSCertificate:YES forHost:[myURL host]]; [[NSURLConnection alloc] initWithRequest:theRequest delegate:self];
+}
+@end
+allowsanyhttpscertificateforhost方法是一个私有方法，如果在生产代码中使用会导致App Store申核被拒绝。
+5.2 协议滥用
+由于iOS沙盒限制，进程间通信（IPC）通常是被禁止的。然而，一个简单形式的IPC申请注册是自定义协议处理程序API是支持的。
+通常，开发人员需要要IPC支持；通过测试确定其他程序的存在，推出了Safari从应用程序可以从应用程序之间传递数据，常用的二个协议处理程序的API;openURL\handleOpenURL,而handleOpenURL已废弃，而openURL具备实例化URL请求的优势，使用openURL API调用对像的例子：
+-(BOOL)application:(UIApplication *)application openURL:(NSURL *)url sourceApplication:(NSString *)sourceApplication annotation:(id)annotation {
+NSString* myBid = [[NSBundle mainBundle] bundleIdentifier]; if ([sourceApplication isEqualToString:myBid])
+{
+return NO;
+}
+else if (!url) {  return NO; }
+NSString *method = [[url host] stringByReplacingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
+if([method isEqualToString:@"setHomeURL"])
+{
+Settings *s = [[Settings alloc] init];
+NSString *querystr = [[url query] stringByReplacingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
+NSArray *param = [querystr componentsSeparatedByString:@"="]; NSString *value = [param objectAtIndex:1];
+[s setHomeURL:value];
+}
+return YES;
+}
+如果开发，只希望通过safari浏览器调用，实现如下
+-(BOOL)application:(UIApplication *)application openURL:(NSURL *)url sourceApplication:(NSString *)sourceApplication annotation:(id)annotation {
+NSString *SafariPath = @"/Applications/MobileSafari.app";
+NSBundle *bundle = [NSBundle bundleWithPath:SafariPath];
+if ([sourceApplication isEqualToString:[bundle bundleIdentifier]])
+{
+return No;
+}
+if ([sourceApplication isEqualToString:[bundle bundleIdentifier]])
+{
+return No;
+}
+另外，在Skype的iOS应用程序中发现的一个漏洞,从MobileSafari浏览，可直接触发呼叫，
+poc：
+<iframe src=“skype://123456789?call"></iframe>
+此问题Skype修复办法：通过UIview 允许用户接受或拒绝呼叫.
+5.3 数据存储
+存储在移动设备上的数据保护是应用发人员必须处理的最重要问题。至关重要的是，开发保护敏感数据，以安全的方式存储客户端。
+如前所述，开发希望加密敏感内容的装置应采用的数据保护API。然而，经常会出现明文存储敏感数据，例如花旗银行的应用曾出现过明文存储用户信息导致信息泄露事件等。
+客户端数据存储的形式：
+Custom created files, 
+Databases, 
+System logs,
+Cookie stores, 
+Plists, 
+Data caches. 
+以上存储方式都可能包含敏感数据，如果手机丢失或被盗了，应启用保护。这些数据将被存储在应用程序的沙盒。应用存储在文件系统中/var/mobile/Applications GUID作为子目录存储应用程序数据，目录结构
+目录	描述
+Application.app	存储APP静态内容和应用编译，在启动进检查
+Documents	持久存储数据;数据同步时备份到Itunes
+Library	包含所有数据:配置、偏好、缓存及cookies
+tmP	存放临时文件
+通过网络抓包、数据库浏览工具验证是否存在信息泄露，参考:见附录
+通过NSDataWritingFileProtectionComplete、NSFileProtectionComplete  数据保护的demo示例：
+-(BOOL)getFile
+{
+NSString *fileURL =  @"http://www.xx.com/xx.pdf";
+NSURL  *url = [NSURL URLWithString:fileURL];
+NSData *urlData = [NSData dataWithContentsOfURL:url];
+if ( urlData )
+{	
+NSArray	*paths =
+NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+NSString	*documentsDirectory = [paths objectAtIndex:0];
+NSString *filePath = [NSString stringWithFormat:@"%@/%@", documentsDirectory,@"wahh-live.pdf"];
+NSError *error = nil;
+[urlData writeToFile:filePath options:NSDataWritingFileProtectionComplete error:&error];
+return YES;
+}
+return NO;
+}
+设备被锁定时，试图访问保护数据失败示例：
+iPhone:/var/mobile/Applications/7F5ED565-781E-47FD-8787-4C76CD7A4DD5 
+root# ls -al Documents/ total 372
+drwxr-xr-x 2	mobile mobile	102	Jan	20	15:24	./
+drwxr-xr-x 6  mobile  mobile	204   Jan20	   15:23  	../
+-rw-r--r-- 1   mobile  mobile  379851  Jan 20	15:24   xx.pdf
+iPhone:/var/mobile/Applications/7F5ED565-781E-47FD-8787-4C76CD7A4DD5 
+root# strings Documents/xx.pdf
+strings: can't open file: Documents/xx.pdf (Operation not permitted) 
+iPhone:/var/mobile/Applications/7F5ED565-781E-47FD-8787-4C76CD7A4DD5 
+root#
+5.4 数据加密
+iOS钥匙扣是一个加密的容器用于存储敏感数据，如证书而限制应用程序只能访问自己的钥匙链项目，除非他们的钥匙串访问组的成员。在文件系统中的文件类似的保护级别，可以采用数据保护API.
+属性	描述
+kSecAttrAccessibleAlways	
+kSecAttrAccessibleWhenUnlocked	
+kSecAttrAccessibleAfterFirstUnlock	
+kSecAttrAccessibleAlwaysThisDeviceOnly	
+kSecAttrAccessibleWhenUnlockedThisDeviceOnly	
+kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly	
+
+密匙项目可以通过 secltemadd、secltemUpdate方法，定义保护级别，默认保护
+的kSecAttrAccessibleAlways任意允许访问，并允许迁移到其它设备。
+数据保护的demo:
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"  "http://www.apple.com/DTDs/PropertyList-1.0.dtd"> <plist version="1.0">
+<dict>
+<key>application-identifier</key> <string>my.company.VulnerableiPhoneApp</string> <key>get-task-allow</key>
+<true/>
+<key>keychain-access-group</key> <array>
+<string>my.company.VulnerableiPhoneApp</string>
+</array>
+</dict>
+</plist>
+应用解锁demo
+NSMutableDictionary *)getkeychainDict:(NSString *)service {
+return [NSMutableDictionary dictionaryWithObjectsAndKeys:
+(id)kSecClassGenericPassword, (id)kSecClass, service,(id)kSecAttrService, service, (id)kSecAttrAccount,
+(id)kSecAttrAccessibleWhenUnlocked, (id)kSecAttrAccessible, nil];
+}
+- (BOOL) saveLicense:(NSString*)licenseKey {
+static NSString *serviceName = @"my.company.VulnerableiPhoneApp";
+NSMutableDictionary *myDict  = [self getkeychainDict:serviceName];
+SecItemDelete((CFDictionaryRef)myDict);
+NSData *licenseData = [licenseKey dataUsingEncoding:NSUTF8StringEncoding];
+[myDict setObject:[NSKeyedArchiver archivedDataWithRootObject:licenseData] forKey:(id)kSecValueData];
+OSStatus status = SecItemAdd((CFDictionaryRef)myDict, NULL);
+if (status == errSecSuccess) return YES;
+return NO;
+}
+5.4 UIWebViews XSS
+Web视图是建立在WebKit、Safari和MobileSafari相同的核心框架之上。因此，一个web视图也是一个Web浏览器，并可以被用来获取和显示远程内容。正如Web浏览器，Web视图也支持JavaScript，允许应用程序执行动态，客户端脚本，但是没有配置选项内禁用此功能的API。因此，就像一个传统的Web应用，iOS应用同样受到跨站点脚本（XSS）。iOS的UIWebView显示文本的渲染引擎，支持格式：
+HTML、PDF、RTF、 Office Documents (doc, xls, ppt)、 iWork Documents (Pages, Numbers and Keynote)等
+XSS demo1:
+NSString *javascript = [[NSString alloc] initWithFormat:@"var myvar=\"%@\";", username];
+[mywebView stringByEvaluatingJavaScriptFromString:javascript];
+[mywebView loadRequest:[NSURLRequest requestWithURL:[NSURL fileURLWithPath:[[NSBundle mainBundle] pathForResource:@"index" 
+POC:
+<html>
+<p>
+Cross-Site Scripting in UIWebView: </p>
+<p>
+This is an example of XSS: <script>document.write(myvar);</script>
+</p>
+</html>
+5.5 SQLite 注入
+SQLlite 注入demo:
+下面是动态查询SQLite过程：
+NSString *uid = [myHTTPConnection getUID];
+NSString *statement = [NSString StringWithFormat:@"SELECT username
+FROM
+users where uid = '%@'",uid];
+const char *sql = [statement UTF8String];
+sqlite3_prepare_v2(db, sql, -1, &selectUid, NULL);
+sqlite3_bind_int(selectUid, 1, uid);
+int status = sqlite3_step(selectUid);
+sqlite3_reset(selectUid);
+uid来自于外部的输入，这种情况下如果外部参数本身包含SQL代码，那么执行拼接后的SQL语句有可能导致异常结果。
+SQLite中Parameterized SQL可以规避上面的问题，比如：
+const char *sql = "SELECT username FROM users where uid = ?";
+sqlite3_prepare_v2(db, sql, -1, &selectUid, NULL);
+sqlite3_bind_int(selectUid, 1, uid);
+int status = sqlite3_step(selectUid);
+sqlite3_reset(selectUid);
+对于少量数据的安全存储可以考虑用Keychain。
+
+6.	Object-c溢出漏洞
+6.1 缓冲区溢出或类C缺陷
+IPhone和Mac OS X一起使用Object-C和大部分的Cocoa API。
+因为用Object-C，开发IPhone应用程序就具有和C程序类似的传统安全风险。然而，其中一些被高层的Cocoa Touch API给屏蔽掉了。又由于苹果公司关于最佳安全实践方面的文档资料较少，因此，开发者们通常没意识到这些风险。
+6.1.1 缓冲区溢出
+String操作尽量用NSString对象，如果要用c风格函数，应该用strl家族的函数。
+http://developer.apple.com/library/mac/#documentation/security/conceptual/SecureCodingGuide/Articles/BufferOverflows.html
+6.1.2 整数溢出
+int * x = malloc(sizeof (*x ) * n);
+for (i = 0; i < n; i++)
+x[i] = 0;
+n过大造成分配异常，后面访问数组的话，则会造成访问异常。NSInteger可以避免这个问题。
+void *array_alloc(size_t count, size_t size) {
+if (0 == count || MAX_UINT / count > size)
+return (0);
+return malloc(count * size);
+}
+6.1.3 格式化字符串攻击
+NSString不支持%n,允许写进程栈。
+格式化威胁：
+1）	写进程stack
+2）	读进程内存
+3）	Crash进程
+有效的格式化字符串http://developer.apple.com/iphone/library/
+documentation/CoreFoundation/Conceptual/CFStrings/formatSpecifiers.html
+6.1.4 静态分析
+为避免C编程接口带来的风险，可以在iPhone程序开发完之后，采用下面的方法来进行静态扫描和动态测试：
+1)	Flawfinder
+对类似strcpy一样的C函数的滥用进行分析。
+
+2 ) Clang Static Analyzer
+http://clang-analyzer.llvm.org/ 
+
+3)	Fuzzing
+这个需要后续的设计和开发，希望能和Android fuzzing一起构建强大的fuzzing防线。
+
+7.	服务器通信安全
+不要重复发明轮子，可以使用iphone SDK SSL库中的函数来实现加密传输。
+
+8.	打补丁不及时
+App Store发布一个新版本程序至少要几周，这样势必会影响已经发现bug的程序的修复。所以，产品出来后，测试人员最好自己先充分测试，再走app store流程。
+
+
+9.	反编译和反汇编
+iPhone的程序也是可以被反编译和反汇编的，工具有：Otool，class dump，otx。
+
+10.	Object use-after-Free
+Object use-after-free漏洞，引用一个对象后，仍然存在的对象已被释放。如果该释放的内存再利用，攻击者能够影响重用的内存，在某些情况下，可能获得执行任意代码。
+Demo：
+TBSEC *tbsec = [[TBSEC alloc] init];
+[tbsec release];
+[tbsec echo: @"tbsec!"];
+上面的例子中，tbsec类一个实例是第一次创建后释放;
+TBSEC *tbsec = [[TBSEC alloc] init]; [tbsec release];
+for(int i=0; i<=50000; i++) { char *buf = strdup(argv[1]);
+}
+[tbsec echo: @"TBSEC!"];
+运行后会导致访问冲突，是因为先前释放的对象实例使用堆内的内在重用;
+(gdb) r AAAA
+Starting program: /private/var/root/objuse AAAA
+Program received signal EXC_BAD_ACCESS, Could not access memory. 
+Reason: KERN_INVALID_ADDRESS at address: 0x41414149
+0x320f8fbc in ?? () 
+(gdb)
+iOS 5以后引入了自动引用计数（ARC）通过内存管理的责任由开发编译完成。因此，对于应用程序使用ARC后，开发不再承担释放或保留对象引起的问题。
+11.	附录：
+1）	Skype iOS XSS  https://superevr.com/blog/2011/skype-xss-explained/
+2）	OWASP Mobile Security Project https://www.owasp.org/index.php/OWASP_Mobile_Security_Project
+3）	Objective-Javascript  http://www.cycript.org/
+4）	MobileSubstrate  http://iphonedevwiki.net/index.php/MobileSubstrate
+5）	Auditing iPhone and iPad Applications http://cansecwest.com/csw11/iPhone%20and%20iPad%20Hacking%20- %20van%20Sprundel.ppt
+6）	Mobile/Tablet Top Operating System Share Trend – NetMarketShare
+http://www.netmarketshare.com/operating-system-market- share.aspx?qprid=9&qpcustomb=1
